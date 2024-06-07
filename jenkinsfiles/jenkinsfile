@@ -13,11 +13,33 @@ pipeline {
         SSH_KEY = 'server-ssh-key-id'
     }
 
+
     stages {
         stage('Pull Code from Git') {
             steps {
                 // Checkout the specified branch from the Git repository
                 git branch: "${GIT_BRANCH}", url: "${GIT_REPO}"
+            }
+        }
+
+        stage('Run Pytest') {
+            steps {
+                script {
+                    // Create a virtual environment for Python dependencies
+                    sh 'python3 -m venv venv'
+                    
+                    // Install the required Python dependencies
+                    sh './venv/bin/pip install -r requirements.txt'
+                    
+                    // Run pytest to execute the tests and generate a JUnit XML report
+                    sh './venv/bin/pytest --junitxml=results.xml'
+                }
+            }
+            post {
+                always {
+                    // Archive the test results to Jenkins
+                    junit 'results.xml'
+                }
             }
         }
 
@@ -53,7 +75,9 @@ pipeline {
                         ssh -o StrictHostKeyChecking=no ${LINUX_SERVER} << EOF
                         # Pull the Docker image from the Nexus repository
                         docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
-                        # Run the Docker container from the pulled image
+                        # Stop and remove the existing container if it exists
+                        docker rm -f ${DOCKER_IMAGE_NAME} || true
+                        # Run a new Docker container from the pulled image
                         docker run -d --name ${DOCKER_IMAGE_NAME} -p 80:80 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
                         EOF
                         """
@@ -65,7 +89,7 @@ pipeline {
 
     post {
         always {
-            // Clean the workspace after the pipeline run
+            // Clean the workspace after the pipeline run to ensure a fresh start for the next build
             cleanWs()
         }
     }
