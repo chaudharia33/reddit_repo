@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     feddit_url: str = Field("http://localhost:8080")
     sentiment_model: SentimentModel = Field(SentimentModel.VADER)
     host: str = Field("0.0.0.0")
-    port: int = Field(8000)
+    port: int = Field(8080)
     reload: bool = Field(True)
     debug: bool = Field(True)
     log_level: str = Field("info")
