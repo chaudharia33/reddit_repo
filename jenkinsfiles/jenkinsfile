@@ -1,0 +1,72 @@
+pipeline {
+    // Define the agent to run the pipeline on any available agent
+    agent any
+
+    // Define environment variables for easy reference
+    environment {
+        GIT_REPO = 'https://github.com/chaudharia33/reddit_repo.git/'
+        GIT_BRANCH = 'main'
+        DOCKER_IMAGE_NAME = 'reddit_api'
+        DOCKER_REGISTRY = 'your-nexus-repository-url'
+        DOCKER_REGISTRY_CREDENTIALS = 'nexus-credentials-id'
+        LINUX_SERVER = 'user@server-ip'
+        SSH_KEY = 'server-ssh-key-id'
+    }
+
+    stages {
+        stage('Pull Code from Git') {
+            steps {
+                // Checkout the specified branch from the Git repository
+                git branch: "${GIT_BRANCH}", url: "${GIT_REPO}"
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build a Docker image from the Dockerfile in the repository
+                    dockerImage = docker.build("${DOCKER_IMAGE_NAME}")
+                }
+            }
+        }
+
+        stage('Push Image to Nexus Repository') {
+            steps {
+                script {
+                    // Push the Docker image to the Nexus Docker registry
+                    docker.withRegistry("${DOCKER_REGISTRY}", "${DOCKER_REGISTRY_CREDENTIALS}") {
+                        // Push the image with a tag corresponding to the build number
+                        dockerImage.push("${env.BUILD_NUMBER}")
+                        // Push the image with the 'latest' tag
+                        dockerImage.push("latest")
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Linux Server') {
+            steps {
+                script {
+                    // Use SSH to connect to the remote Linux server
+                    sshagent(credentials: ["${SSH_KEY}"]) {
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ${LINUX_SERVER} << EOF
+                        # Pull the Docker image from the Nexus repository
+                        docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
+                        # Run the Docker container from the pulled image
+                        docker run -d --name ${DOCKER_IMAGE_NAME} -p 80:80 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
+                        EOF
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean the workspace after the pipeline run
+            cleanWs()
+        }
+    }
+}
